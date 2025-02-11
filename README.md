@@ -1,2 +1,2 @@
 # TcruziGenome
-Scripts used in manuscript: The karyotype of Trypanosoma cruzi
+python and R Scripts used in manuscript: The karyotype of Trypanosoma cruzi
