@@ -1,0 +1,137 @@
+library(GenomicRanges)
+library(ggplot2)
+library(data.table)
+library(rtracklayer)
+
+#Create for each chromosome the global density plot in 100 bines; the first and last 10 bin zoom plot.
+
+# Leer archivo GFF e importar genes
+gff_file <- "AnotacionDm28cT2T_.gff"
+genes <- import(gff_file, format = "gff")
+genes <- genes[genes$type == "gene"]
+
+# Leer archivo de largos de cromosomas
+chrom_lengths <- fread("largosCromo.txt", header = FALSE, sep = "\t")
+colnames(chrom_lengths) <- c("chr", "length")
+chrom_lengths <- chrom_lengths[chrom_lengths$chr != "TcDm28c_aMaxicircle", ]
+
+# Filtrar genes que están en los cromosomas especificados
+filtered_genes <- genes[seqnames(genes) %in% chrom_lengths$chr]
+
+# Crear la carpeta donde se guardarán los gráficos
+output_dir <- "DensityPlots"
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir)
+}
+# Función para generar gráficos de densidad
+generate_density_plots <- function(cromosoma) {
+  # Obtener la longitud del cromosoma
+  chrom_length <- chrom_lengths$length[chrom_lengths$chr == cromosoma]
+  
+  # Filtrar los genes para este cromosoma
+  genes_cromosoma <- filtered_genes[seqnames(filtered_genes) == cromosoma]
+  
+  # Dividir el cromosoma en bins
+  n_bins <- 100
+  bin_size <- ceiling(chrom_length / n_bins)
+  
+  # Crear los bins para el cromosoma
+  bin_starts <- seq(1, chrom_length, by = bin_size)
+  bin_ends <- c(bin_starts[-1] - 1, chrom_length)  # Último bin hasta el final
+  bins <- GRanges(seqnames = cromosoma, 
+                  ranges = IRanges(start = bin_starts, end = bin_ends))
+  
+  # Calcular la densidad de genes por bin
+  dens <- countOverlaps(bins, genes_cromosoma) / width(bins)
+  
+  # Calcular la densidad media global del cromosoma
+  global_mean <- mean(dens, na.rm = TRUE)
+  cat("Global mean:", global_mean, "\n")
+  
+  # Calcular puntos de cruce
+  crossings <- which(diff(sign(dens - global_mean)) != 0)
+  interpolate_cross <- function(dens, global_mean, idx) {
+    x1 <- idx
+    x2 <- idx + 1
+    y1 <- dens[x1]
+    y2 <- dens[x2]
+    return(x1 + (global_mean - y1) / (y2 - y1))
+  }
+  
+  first_cross <- if (length(crossings) > 0) interpolate_cross(dens, global_mean, crossings[1]) else NA
+  last_cross <- if (length(crossings) > 0) interpolate_cross(dens, global_mean, crossings[length(crossings)]) else NA
+  
+  cat("First cross (bin):", first_cross, "\n")
+  cat("Last cross (bin):", last_cross, "\n")
+  
+  # Función para personalizar el eje Y
+  custom_y_axis <- function(dens_values) {
+    axis(2, at = pretty(dens_values, n = 10), labels = format(pretty(dens_values, n = 10), scientific = FALSE, digits = 4))
+  }
+  
+  # Gráfico de la densidad completa
+  tiff(file.path(output_dir, paste0(cromosoma, "_full_density.tiff")), width = 8, height = 6, units = "in", res = 300)
+  plot(dens, type = "l", xlab = "Position (bin)", ylab = "Gene Density",
+       main = paste("Gene Density for", cromosoma),
+       ylim = c(0, max(dens, na.rm = TRUE) * 1.2), axes = FALSE)
+  box()
+  axis(1)
+  custom_y_axis(dens)
+  abline(h = global_mean, col = "red", lty = 2)
+  text(20, global_mean * 0.2, labels = paste("Global Mean:", format(global_mean, digits = 4)), col = "red")
+  if (!is.na(first_cross)) abline(v = first_cross, col = "blue", lty = 3)
+  if (!is.na(last_cross)) abline(v = last_cross, col = "blue", lty = 3)
+  dev.off()
+  
+  # Gráfico de los primeros 10 bins
+  tiff(file.path(output_dir, paste0(cromosoma, "_zoom_first.tiff")), width = 8, height = 6, units = "in", res = 300)
+  zoom_first <- dens[1:10]
+  plot(zoom_first, type = "l", xlab = "Position (bin)", ylab = "Gene Density",
+       main = paste("Zoom: First 10 Bins for", cromosoma),
+       ylim = c(0, max(zoom_first, na.rm = TRUE) * 1.2), axes = FALSE)
+  box()
+  axis(1, at = 1:10, labels = 1:10)
+  custom_y_axis(zoom_first)
+  abline(h = global_mean, col = "red", lty = 2)
+  
+  if (!is.na(first_cross)) {
+    subtitle_first <- paste("Cut at bin", round(first_cross, 2), 
+                            "(length: ", round(first_cross * bin_size / 1000, 2), "Kb)")
+    mtext(subtitle_first, side = 3, line = 0.5, cex = 0.8) # Subtítulo debajo del título
+    abline(v = first_cross, col = "blue", lty = 3)  # Línea azul
+  }
+  
+  mtext(paste("Global Mean:", format(global_mean, digits = 4)), side = 3, line = -1, cex = 0.8, col = "red") # Global Mean dentro del gráfico
+  dev.off()
+  
+  # Gráfico de los últimos 10 bins
+  tiff(file.path(output_dir, paste0(cromosoma, "_zoom_last.tiff")), width = 8, height = 6, units = "in", res = 300)
+  zoom_last <- dens[(n_bins - 9):n_bins]
+  plot(zoom_last, type = "l", xlab = "Position (bin)", ylab = "Gene Density",
+       main = paste("Zoom: Last 10 Bins for", cromosoma),
+       ylim = c(0, max(zoom_last, na.rm = TRUE) * 1.2), axes = FALSE)
+  box()
+  axis(1, at = 1:10, labels = (n_bins - 9):n_bins)
+  custom_y_axis(zoom_last)  # Usar la misma función para personalizar el eje Y
+  abline(h = global_mean, col = "red", lty = 2)
+  
+  # Subtítulo y línea azul para el último cruce
+  if (!is.na(last_cross)) {
+    subtitle_last <- paste("Cut at bin", round(last_cross, 2), 
+                           "(length: ", round((100-last_cross) * bin_size / 1000, 2), " Kb)")
+    mtext(subtitle_last, side = 3, line = 0.5, cex = 0.8)  # Subtítulo debajo del título
+    abline(v = last_cross - (n_bins - 10), col = "blue", lty = 3)  # Línea azul ajustada
+  }
+  
+  # Global Mean dentro del gráfico
+  mtext(paste("Global Mean:", format(global_mean, digits = 4)), 
+        side = 3, line = -1, cex = 0.8, col = "red")
+  dev.off()
+}
+
+
+# Generar gráficos para todos los cromosomas del TcDm28c_01 al TcDm28c_32
+for (cromosoma in chrom_lengths$chr) {
+  cat("Generating plots for:", cromosoma, "\n")
+  generate_density_plots(cromosoma)
+}
