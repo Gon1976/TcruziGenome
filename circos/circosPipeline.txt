@@ -1,0 +1,10 @@
+#Genome vs Genome circos pipeline.
+
+#1. minimap 
+minimap2 -x asm10 genome1.fasta genome2.fasta -o genome1vsgenome2.minimap
+
+#2. obtain out.links and out.karyo from minimap ouput
+python3 minimap2circos.py genome1vsgenome2.minimap
+
+#3. run circos (input out.links and out.karyo, ouput: circos.png)
+circos -conf circos.conf
