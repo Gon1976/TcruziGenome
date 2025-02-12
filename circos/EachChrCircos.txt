@@ -1,0 +1,11 @@
+#This pipeline generate one image for each chromosome of one genoma vs another genome pipeline.
+
+#1. minimap 
+minimap2 -x asm10 genome1.fasta genome2.fasta -o genome1vsgenome2.minimap
+
+#2. obtain a blast output format
+python3 a.	python3 minimap2blast.py genome1vsgenome2.minimap output.blast
+
+#3. run circosChr.sh
+./circosChr.sh output.blast #circos.conf and ticks.conf should be in the run folder
+ 
