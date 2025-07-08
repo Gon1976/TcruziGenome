@@ -12,7 +12,7 @@
 #samtools depth -a -d 0 -b bins_1kb.bed illumina_vs_T2T.bam > depth_per_bin.txt
 
 #depth_per_bin.txt in R
-libary(tidyverse)
+library(tidyverse)
 # depth_per_bin.txt
 depth_data <- read.table("depth_per_bin.txt", header = FALSE, col.names = c("chromosome", "position", "depth"))
 
