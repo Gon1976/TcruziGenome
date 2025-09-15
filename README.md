@@ -16,4 +16,4 @@ The file circosPipeline.txt describes the pipeline used to generate circos plots
 
 The file EachChrCircos.txt describes the pipeline used to generate circos plots for each contig of genome 1 against all contigs of genome 2.
 
-Finally, minimap2circos.py is a Python script used to generate the files out.karyo and out.link from the minimap2 output.
+Finally, minimap2circos.py is a Python script used to generate the files out.karyo and out.link from the minimap2 output required to run circos.
