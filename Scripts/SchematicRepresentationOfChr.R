@@ -1,25 +1,25 @@
 library(dplyr)
 library(ggplot2)
 
-#Schematic represenation of genes and telomeres in chromosomes.
+#Schematic represenation of genes and telomeres in chromosomes (Figure3A).
 
-# Leer y preparar los datos
+# prepare data
 chrom_lengths <- read.table("mygenome.txt", header = TRUE, stringsAsFactors = FALSE)
 colnames(chrom_lengths) <- c("seqname", "start", "end", "name1") # Ajustar nombres de columnas
 
-# Crear columna display_name para los gráficos
+# display_name for plots
 chrom_lengths <- chrom_lengths %>%
   mutate(length = as.numeric(end - start),
          display_name = name1) %>%
   filter(seqname != "TcDm28c_aMaxicircle") %>%
   arrange(desc(length))
 
-# Leer y procesar el archivo GFF
+# read gff
 gff_data <- read.table("AnotacionDm28cT2T_.gff", sep = "\t", header = FALSE, quote = "", 
                        col.names = c("seqname", "source", "feature", "start", "end", "score", "strand", "frame", "attribute"), 
                        stringsAsFactors = FALSE)
 
-# Procesar datos relevantes
+# get data
 relevant_features <- gff_data %>%
   filter(feature %in% c("gene", "CDS") & seqname != "TcDm28c_aMaxicircle") %>%
   mutate(
@@ -33,7 +33,7 @@ relevant_features <- gff_data %>%
     )
   )
 
-# Identificar genes y CDS extremos
+# Identify genes and extreme features
 extreme_features <- relevant_features %>%
   group_by(seqname) %>%
   summarise(
@@ -44,11 +44,11 @@ extreme_features <- relevant_features %>%
   ) %>%
   ungroup()
 
-# Incorporar display_name en los datos
+# add display_name to data
 chrom_lengths <- chrom_lengths %>%
   mutate(seqname = factor(seqname, levels = rev(seqname)))
 
-# Procesar las posiciones de los genes
+# determine positions of genes
 positions_list <- list(
   rhs_positions = relevant_features %>% filter(type == "RHS"),
   other_positions = relevant_features %>% filter(type == "other"),
@@ -65,7 +65,7 @@ for (name in names(positions_list)) {
 extreme_features <- extreme_features %>%
   mutate(display_name = chrom_lengths$display_name[match(seqname, chrom_lengths$seqname)])
 
-# Asegurarse de que los factores estén correctamente ordenados
+# order by chr name
 factor_levels <- rev(chrom_lengths$display_name)
 
 for (name in names(positions_list)) {
@@ -76,26 +76,25 @@ for (name in names(positions_list)) {
 extreme_features <- extreme_features %>%
   mutate(display_name = factor(display_name, levels = factor_levels))
 
-# Agregar puntos negros para los telómeros
+# Add black dots to telomere
 telomere_positions <- chrom_lengths %>%
   mutate(
     start_pos = 0,
     end_pos = length
   )
 
-# Gráfico incluyendo GP63
+# Plot
 ggplot() +
   # Barras grises para los cromosomas
   geom_segment(data = chrom_lengths,
                aes(x = 0, xend = length, y = display_name, yend = display_name),
                color = "grey", linewidth = 1.5) +
-  # Puntos negros para los telómeros
+  # telomeres
   geom_point(data = telomere_positions, aes(x = start_pos, y = display_name, shape = "Telomere"), color = "black", size = 2) +
   geom_point(data = telomere_positions, aes(x = end_pos, y = display_name, shape = "Telomere"), color = "black", size = 2) +
-  # Puntos para los genes y CDS extremos
+  # genes
   geom_point(data = extreme_features, aes(x = first_pos, y = display_name, color = first_type), size = 1.5) +
   geom_point(data = extreme_features, aes(x = last_pos, y = display_name, color = last_type), size = 1.5) +
-  # Líneas verticales para los diferentes tipos de genes
   geom_segment(data = positions_list$rhs_positions, 
                aes(x = start, xend = start, y = as.numeric(display_name) - 0.2, yend = as.numeric(display_name) + 0.2, color = type),
                linewidth = 0.2) +
@@ -111,17 +110,17 @@ ggplot() +
   geom_segment(data = positions_list$trans_positions,
                aes(x = start, xend = start, y = as.numeric(display_name) - 0.2, yend = as.numeric(display_name) + 0.2, color = type),
                linewidth = 0.2) +
-  # Escala de colores para los puntos
+  # colore scale for genes
   scale_color_manual(
     values = c("RHS" = "brown", "trans-sialidase" = "orangered", "mucin/MASP" = "cornflowerblue", "GP63" = "orange", "other" = "forestgreen"),
     breaks = c("RHS", "trans-sialidase", "mucin/MASP", "GP63", "other")  # Orden de la leyenda
   ) +
-  # Escala de formas para los telómeros
+  # telomere config
   scale_shape_manual(
     values = c("Telomere" = 16),  # Usar forma de círculo sólido para telómeros
     labels = c("Telomere" = "Telomere")  # Etiqueta en la leyenda
   ) +
-  # Estilo y etiquetas
+  # config
   labs(title = "First telomere gene/global distribution", x = "Position (bp)", y = "Chromosome", color = "Gene Annotation", shape = "") +
   theme_minimal() +
   theme(
@@ -130,148 +129,34 @@ ggplot() +
     legend.position = "right"  # Posición de la leyenda
   )
 
-#Agregando info C y D
+#Core and disruptive information GCanner (https://gcanner.streamlit.app/)
 library(dplyr)
 library(ggplot2)
 
-# Leer el archivo .bed
-bed_data <- read.table("regions.bed", sep = "\t", header = FALSE, stringsAsFactors = FALSE)
-colnames(bed_data) <- c("seqname", "start", "end", "region_type") # Ajustar nombres de columnas
-
-# Asegurar que las coordenadas comiencen desde 1
-bed_data <- bed_data %>%
-  mutate(start = ifelse(start < 1, 1, start))
-
-# Inicializar dataframe para regiones C
-all_regions <- data.frame()
-
-# Procesar cada cromosoma individualmente
-for (chrom in unique(bed_data$seqname)) {
-  chrom_len <- chrom_lengths$length[chrom_lengths$seqname == chrom]
-  chrom_bed <- bed_data[bed_data$seqname == chrom, ]
-  
-  # Añadir la primera región C si no empieza desde el inicio
-  if (chrom_bed$start[1] > 1) {
-    all_regions <- rbind(all_regions, 
-                         data.frame(seqname = chrom, start = 1, end = chrom_bed$start[1] - 1, region_type = "C"))
-  }
-  
-  # Añadir las regiones C entre las regiones D
-  for (i in 1:(nrow(chrom_bed) - 1)) {
-    all_regions <- rbind(all_regions, chrom_bed[i, ])
-    if (chrom_bed$end[i] + 1 < chrom_bed$start[i + 1]) {
-      all_regions <- rbind(all_regions, 
-                           data.frame(seqname = chrom, start = chrom_bed$end[i] + 1, end = chrom_bed$start[i + 1] - 1, region_type = "C"))
-    }
-  }
-  
-  # Añadir la última región D
-  all_regions <- rbind(all_regions, chrom_bed[nrow(chrom_bed), ])
-  
-  # Añadir la última región C si no termina en el final
-  if (chrom_bed$end[nrow(chrom_bed)] < chrom_len) {
-    all_regions <- rbind(all_regions, 
-                         data.frame(seqname = chrom, start = chrom_bed$end[nrow(chrom_bed)] + 1, end = chrom_len, region_type = "C"))
-  }
-}
-
-# Incorporar display_name en los datos
-all_regions <- all_regions %>%
-  mutate(display_name = chrom_lengths$display_name[match(seqname, chrom_lengths$seqname)])
-
-# Asegurarse de que los factores estén correctamente ordenados
-factor_levels <- rev(chrom_lengths$display_name)
-all_regions <- all_regions %>%
-  mutate(display_name = factor(display_name, levels = factor_levels))
-
-#Plot
-
-# Crear el gráfico
-ggplot() +
-  # Barras grises para los cromosomas
-  geom_segment(data = chrom_lengths,
-               aes(x = 0, xend = length, y = display_name, yend = display_name),
-               color = "grey", linewidth = 1.5) +
-  # Puntos negros para los telómeros
-  geom_point(data = telomere_positions, aes(x = start_pos, y = display_name, shape = "Telomere"), color = "black", size = 2) +
-  geom_point(data = telomere_positions, aes(x = end_pos, y = display_name, shape = "Telomere"), color = "black", size = 2) +
-  # Puntos para los genes y CDS extremos
-  geom_point(data = extreme_features, aes(x = first_pos, y = display_name, color = first_type), size = 1.5) +
-  geom_point(data = extreme_features, aes(x = last_pos, y = display_name, color = last_type), size = 1.5) +
-  # Líneas verticales para los diferentes tipos de genes
-  geom_segment(data = positions_list$rhs_positions, 
-               aes(x = start, xend = start, y = as.numeric(display_name) - 0.2, yend = as.numeric(display_name) + 0.2, color = type),
-               linewidth = 0.2) +
-  geom_segment(data = positions_list$mucin_positions, 
-               aes(x = start, xend = start, y = as.numeric(display_name) - 0.2, yend = as.numeric(display_name) + 0.2, color = type),
-               linewidth = 0.2) +
-  geom_segment(data = positions_list$gp63_positions, 
-               aes(x = start, xend = start, y = as.numeric(display_name) - 0.2, yend = as.numeric(display_name) + 0.2, color = type),
-               linewidth = 0.2) +
-  geom_segment(data = positions_list$other_positions, 
-               aes(x = start, xend = start, y = as.numeric(display_name) - 0.2, yend = as.numeric(display_name) + 0.2, color = type),
-               linewidth = 0.2) +
-  geom_segment(data = positions_list$trans_positions,
-               aes(x = start, xend = start, y = as.numeric(display_name) - 0.2, yend = as.numeric(display_name) + 0.2, color = type),
-               linewidth = 0.2) +
-  # Líneas para las regiones D y C
-  geom_rect(data = all_regions,
-            aes(xmin = start, xmax = end, ymin = as.numeric(display_name) - 0.4, ymax = as.numeric(display_name) + 0.4, fill = region_type),
-            alpha = 0.5) +
-  # Escala de colores para los puntos
-  scale_color_manual(
-    values = c("RHS" = "brown", "trans-sialidase" = "orangered", "mucin/MASP" = "cornflowerblue", "GP63" = "orange", "other" = "forestgreen"),
-    breaks = c("RHS", "trans-sialidase", "mucin/MASP", "GP63", "other")  # Orden de la leyenda
-  ) +
-  # Escala de formas para los telómeros
-  scale_shape_manual(
-    values = c("Telomere" = 16),  # Usar forma de círculo sólido para telómeros
-    labels = c("Telomere" = "Telomere")  # Etiqueta en la leyenda
-  ) +
-  # Escala de colores para las regiones C y D
-  scale_fill_manual(
-    values = c("C" = "gray", "D" = "goldenrod1"),
-    labels = c("C" = "Region C", "D" = "Region D")
-  ) +
-  # Estilo y etiquetas
-  labs(title = "First telomere gene/global distribution", x = "Position (bp)", y = "Chromosome", color = "Gene Annotation", shape = "", fill = "Region") +
-  theme_minimal() +
-  theme(
-    panel.grid.major.y = element_line(color = "grey", linewidth = 0.2),
-    panel.grid.minor = element_blank(),
-    legend.position = "right"  # Posición de la leyenda
-  )
-
-#Agregando info de disruptomics:
-library(dplyr)
-library(ggplot2)
-
-# Leer el archivo .csv
+# read csv output of app
 disruptomics_data <- read.csv("disruptomics.csv", stringsAsFactors = FALSE)
-
-# Asegurar que las coordenadas comiencen desde 1
 disruptomics_data <- disruptomics_data %>%
   mutate(Start = ifelse(Start < 1, 1, Start))
 
-# Incorporar display_name en los datos
+# add display_name to data
 disruptomics_data <- disruptomics_data %>%
   mutate(display_name = chrom_lengths$display_name[match(seqname, chrom_lengths$seqname)])
 
-# Asegurarse de que los factores estén correctamente ordenados
+# order
 factor_levels <- rev(chrom_lengths$display_name)
 disruptomics_data <- disruptomics_data %>%
   mutate(display_name = factor(display_name, levels = factor_levels))
 
-# Crear el gráfico con la nueva información
+# plot
 ggplot() +
   # Barras grises para los cromosomas
   geom_segment(data = chrom_lengths,
                aes(x = 0, xend = length, y = display_name, yend = display_name),
                color = "grey", linewidth = 1.5) +
-  # Puntos negros para los telómeros
+  # telomeres
   geom_point(data = telomere_positions, aes(x = start_pos, y = display_name, shape = "Telomere"), color = "black", size = 2) +
   geom_point(data = telomere_positions, aes(x = end_pos, y = display_name, shape = "Telomere"), color = "black", size = 2) +
-  # Puntos para los genes y CDS extremos
+  # genes y CDS extremos
   geom_point(data = extreme_features, aes(x = first_pos, y = display_name, color = first_type), size = 1.5) +
   geom_point(data = extreme_features, aes(x = last_pos, y = display_name, color = last_type), size = 1.5) +
   # Líneas verticales para los diferentes tipos de genes
@@ -290,23 +175,23 @@ ggplot() +
   geom_segment(data = positions_list$trans_positions,
                aes(x = start, xend = start, y = as.numeric(display_name) - 0.2, yend = as.numeric(display_name) + 0.2, color = type),
                linewidth = 0.2) +
-  # Líneas para las regiones Core y Disruptive
+  # Core and disruptive regions
   geom_segment(data = disruptomics_data,
                aes(x = Start, xend = End, y = as.numeric(display_name) - 0.5, yend = as.numeric(display_name) - 0.5, color = Region_Type),
                alpha = 1, linewidth = 2) +
-  # Escala de colores para los puntos
+  # colore scale
   scale_color_manual(
     values = c("RHS" = "brown", "trans-sialidase" = "orangered", "mucin/MASP" = "cornflowerblue", "GP63" = "orange", "other" = "forestgreen", 
                "Core" = "gray", "Disruptive" = "goldenrod1"),
     breaks = c("RHS", "trans-sialidase", "mucin/MASP", "GP63", "other", "Core", "Disruptive"),  # Orden de la leyenda
     labels = c("RHS", "trans-sialidase", "mucin/MASP", "GP63", "other", "Region Core", "Region Disruptive")  # Etiquetas en la leyenda
   ) +
-  # Escala de formas para los telómeros
+  # telomeres
   scale_shape_manual(
     values = c("Telomere" = 16),  # Usar forma de círculo sólido para telómeros
     labels = c("Telomere" = "Telomere")  # Etiqueta en la leyenda
   ) +
-  # Estilo y etiquetas
+  # config
   labs(title = "First telomere gene/global distribution", x = "Position (bp)", y = "Chromosome", color = "Gene Annotation", shape = "", fill = "Region") +
   theme_minimal() +
   theme(
@@ -314,3 +199,99 @@ ggplot() +
     panel.grid.minor = element_blank(),
     legend.position = "right"  # Posición de la leyenda
   )
+
+######## PLOT HIGH RESOLUTION ##############
+library(dplyr)
+library(ggplot2)
+
+# Final plot
+p <- ggplot() +
+  # gray bar to represent chromosomes
+  geom_segment(data = chrom_lengths,
+               aes(x = 0, xend = length, y = display_name, yend = display_name),
+               color = "grey", linewidth = 1.5) +
+  # black dots for telomeres
+  geom_point(data = telomere_positions, aes(x = start_pos, y = display_name, shape = "Telomere"), color = "black", size = 2) +
+  geom_point(data = telomere_positions, aes(x = end_pos, y = display_name, shape = "Telomere"), color = "black", size = 2) +
+  # dot for first gene post-telomere
+  geom_point(data = extreme_features, aes(x = first_pos, y = display_name, color = first_type), size = 1.5) +
+  geom_point(data = extreme_features, aes(x = last_pos, y = display_name, color = last_type), size = 1.5) +
+  # genes representation across chr ALPHA = 0.8
+  geom_segment(data = positions_list$rhs_positions, 
+               aes(x = start, xend = start, y = as.numeric(display_name) - 0.2, yend = as.numeric(display_name) + 0.2, color = type),
+               linewidth = 0.2, alpha = 0.8) +
+  geom_segment(data = positions_list$mucin_positions, 
+               aes(x = start, xend = start, y = as.numeric(display_name) - 0.2, yend = as.numeric(display_name) + 0.2, color = type),
+               linewidth = 0.2, alpha = 0.8) +
+  geom_segment(data = positions_list$gp63_positions, 
+               aes(x = start, xend = start, y = as.numeric(display_name) - 0.2, yend = as.numeric(display_name) + 0.2, color = type),
+               linewidth = 0.2, alpha = 0.8) +
+  geom_segment(data = positions_list$other_positions, 
+               aes(x = start, xend = start, y = as.numeric(display_name) - 0.2, yend = as.numeric(display_name) + 0.2, color = type),
+               linewidth = 0.2, alpha = 0.8) +
+  geom_segment(data = positions_list$trans_positions,
+               aes(x = start, xend = start, y = as.numeric(display_name) - 0.2, yend = as.numeric(display_name) + 0.2, color = type),
+               linewidth = 0.2, alpha = 0.8) +
+  # Core and Disruptive representation
+  geom_segment(data = disruptomics_data,
+               aes(x = Start, xend = End, y = as.numeric(display_name) - 0.5, yend = as.numeric(display_name) - 0.5, color = Region_Type),
+               alpha = 1, linewidth = 2) +
+  # color scale
+  scale_color_manual(
+    values = c("RHS" = "brown", "trans-sialidase" = "orangered", "mucin/MASP" = "cornflowerblue", "GP63" = "orange", "other" = "forestgreen", 
+               "Core" = "gray", "Disruptive" = "goldenrod1"),
+    breaks = c("RHS", "trans-sialidase", "mucin/MASP", "GP63", "other", "Core", "Disruptive"),  # Orden de la leyenda
+    labels = c("RHS", "trans-sialidase", "mucin/MASP", "GP63", "other", "Region Core", "Region Disruptive")  # Etiquetas en la leyenda
+  ) +
+  # color scale for telomeres
+  scale_shape_manual(
+    values = c("Telomere" = 16),  # Usar forma de círculo sólido para telómeros
+    labels = c("Telomere" = "Telomere")  # Etiqueta en la leyenda
+  ) +
+  # config
+  labs(title = "First telomere gene/global distribution", 
+       x = "Position (bp)", 
+       y = "Chromosome", 
+       color = "Gene Annotation", 
+       shape = "", 
+       fill = "Region") +
+  theme_minimal() +
+  theme(
+    panel.grid.major.y = element_line(color = "grey", linewidth = 0.2),
+    panel.grid.minor = element_blank(),
+    legend.position = "right",  # Posición de la leyenda
+    text = element_text(size = 8),  # Tamaño de letra base 8
+    axis.text = element_text(size = 8),
+    axis.title = element_text(size = 8),
+    plot.title = element_text(size = 10, face = "bold", hjust = 0.5),
+    legend.text = element_text(size = 8),
+    legend.title = element_text(size = 8)
+  )
+
+
+fecha_actual <- format(Sys.Date(), "%Y%m%d")
+
+# create name of file
+nombre_archivo <- paste0("figura2A_", fecha_actual, ".tiff")
+
+# save High resolution tiff
+ggsave(
+  filename = nombre_archivo,
+  plot = p,
+  device = "tiff",
+  width = 10,           # Ancho en pulgadas
+  height = 8,          # Alto en pulgadas
+  units = "in",        # Unidades en pulgadas
+  dpi = 600,           # Alta resolución (600 dpi)
+  compression = "lzw", # Compresión sin pérdida
+  bg = "white"         # Fondo blanco
+)
+
+# verification
+cat("Gráfico guardado como:", nombre_archivo, "\n")
+cat("Configuración:\n")
+cat("- Alpha = 0.8 para líneas de genes\n")
+cat("- Alpha = 1.0 para regiones Core/Disruptive\n")
+cat("- Tamaño: 10x8 pulgadas\n")
+cat("- Resolución: 600 dpi\n")
+cat("- Formato: TIFF con compresión LZW\n")
