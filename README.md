@@ -17,3 +17,6 @@ The file circosPipeline.txt describes the pipeline used to generate circos plots
 The file EachChrCircos.txt describes the pipeline used to generate circos plots for each contig of genome 1 against all contigs of genome 2.
 
 Finally, minimap2circos.py is a Python script used to generate the files out.karyo and out.link from the minimap2 output required to run circos.
+
+All the scripts used to generate figures and analysis in the published manuscript:
+Greif, G., Chiribao, M., Díaz-Viraqué, F. et al. The complete genome of Trypanosoma cruzi reveals 32 chromosomes and three genomic compartments. BMC Genomics (2026). https://doi.org/10.1186/s12864-025-12482-0
